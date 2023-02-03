@@ -4,6 +4,11 @@
 #include <DirectXMath.h>
 #include <wrl/client.h> // Used for ComPtr - a smart pointer for COM objects
 
+#include <memory>
+#include "Camera.h"
+#include <vector>
+#include "GameEntity.h"
+
 class Game 
 	: public DXCore
 {
@@ -33,11 +38,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState;
 
-	Microsoft::WRL::ComPtr<ID3D12Resource> vertexBuffer;
-	Microsoft::WRL::ComPtr<ID3D12Resource> indexBuffer;
+	std::shared_ptr<Camera> camera;
 
-	D3D12_VERTEX_BUFFER_VIEW vbView;
-	D3D12_INDEX_BUFFER_VIEW ibView;
-
+	std::vector<std::shared_ptr<GameEntity>> gameEntities;
 };
 

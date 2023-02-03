@@ -15,8 +15,8 @@ public:
 	~Mesh();
 
 	// Getters for mesh data
-	Microsoft::WRL::ComPtr<ID3D12Resource> GetVertexBuffer();
-	Microsoft::WRL::ComPtr<ID3D12Resource> GetIndexBuffer();
+	D3D12_VERTEX_BUFFER_VIEW GetVertexBuffer();
+	D3D12_INDEX_BUFFER_VIEW GetIndexBuffer();
 	unsigned int GetIndexCount();
 
 private:
