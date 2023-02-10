@@ -8,6 +8,8 @@
 #include "Camera.h"
 #include <vector>
 #include "GameEntity.h"
+#include "Material.h"
+#include "Lights.h"
 
 class Game 
 	: public DXCore
@@ -29,6 +31,7 @@ private:
 	// Initialization helper methods - feel free to customize, combine, remove, etc.
 	void CreateRootSigAndPipelineState();
 	void CreateGeometry();
+	void CreateLights();
 
 	// Note the usage of ComPtr below
 	//  - This is a smart pointer for objects that abide by the
@@ -41,5 +44,10 @@ private:
 	std::shared_ptr<Camera> camera;
 
 	std::vector<std::shared_ptr<GameEntity>> gameEntities;
+
+	DirectX::XMFLOAT3 ambientColor;
+
+	int lightCount;
+	std::vector<Light> lights;
 };
 

@@ -54,11 +54,14 @@ Game::~Game()
 // --------------------------------------------------------
 void Game::Init()
 {
+	ambientColor = XMFLOAT3(0.9f, 0.1f, 0.1f);
+
 	// Helper methods for loading shaders, creating some basic
 	// geometry to draw and some simple camera matrices.
 	// - You'll be expanding and/or replacing these later
 	CreateRootSigAndPipelineState();
 	CreateGeometry();
+	CreateLights();
 
 	camera = std::make_shared<Camera>(
 		XMFLOAT3(0.0f, 0.0f, -10.0f),		  // Position
@@ -73,6 +76,24 @@ void Game::Init()
 // --------------------------------------------------------
 void Game::CreateGeometry()
 {
+	// Quick macro to simplify texture loading lines below
+#define LoadTexture(x) DX12Helper::GetInstance().LoadTexture(FixPath(x).c_str())
+
+	// Load textures
+	D3D12_CPU_DESCRIPTOR_HANDLE cobblestoneAlbedo = LoadTexture(L"../../Assets/Textures/cobblestone_albedo.png");
+	D3D12_CPU_DESCRIPTOR_HANDLE cobblestoneNormals = LoadTexture(L"../../Assets/Textures/cobblestone_normals.png");
+	D3D12_CPU_DESCRIPTOR_HANDLE cobblestoneRoughness = LoadTexture(L"../../Assets/Textures/cobblestone_roughness.png");
+	D3D12_CPU_DESCRIPTOR_HANDLE cobblestoneMetal = LoadTexture(L"../../Assets/Textures/cobblestone_metal.png");
+
+	std::shared_ptr<Material> cobblestoneMaterial = std::make_shared<Material>(pipelineState, XMFLOAT3(1, 1, 1), 
+		XMFLOAT2(0, 0), XMFLOAT2(1, 1), 0.7f);
+
+	cobblestoneMaterial->AddTexture(cobblestoneAlbedo, 0);
+	cobblestoneMaterial->AddTexture(cobblestoneNormals, 1);
+	cobblestoneMaterial->AddTexture(cobblestoneRoughness, 2);
+	cobblestoneMaterial->AddTexture(cobblestoneMetal, 3);
+	cobblestoneMaterial->FinalizeTextures();
+
 	// Load meshes
 	std::shared_ptr<Mesh> cube = std::make_shared<Mesh>(FixPath(L"../../Assets/Models/cube.obj").c_str());
 	std::shared_ptr<Mesh> sphere = std::make_shared<Mesh>(FixPath(L"../../Assets/Models/sphere.obj").c_str());
@@ -81,20 +102,62 @@ void Game::CreateGeometry()
 	std::shared_ptr<Mesh> cylinder = std::make_shared<Mesh>(FixPath(L"../../Assets/Models/cylinder.obj").c_str());
 
 	// Create entities
-	gameEntities.push_back(std::make_shared<GameEntity>(cube));
+	gameEntities.push_back(std::make_shared<GameEntity>(cube, cobblestoneMaterial));
 	gameEntities[0]->GetTransform()->SetPosition(-6, 0, 0);
 
-	gameEntities.push_back(std::make_shared<GameEntity>(sphere));
+	gameEntities.push_back(std::make_shared<GameEntity>(sphere, cobblestoneMaterial));
 	gameEntities[1]->GetTransform()->SetPosition(-3, 0, 0);
 
-	gameEntities.push_back(std::make_shared<GameEntity>(helix));
+	gameEntities.push_back(std::make_shared<GameEntity>(helix, cobblestoneMaterial));
 	gameEntities[2]->GetTransform()->SetPosition(0, 0, 0);
 
-	gameEntities.push_back(std::make_shared<GameEntity>(torus));
+	gameEntities.push_back(std::make_shared<GameEntity>(torus, cobblestoneMaterial));
 	gameEntities[3]->GetTransform()->SetPosition(3, 0, 0);
 
-	gameEntities.push_back(std::make_shared<GameEntity>(cylinder));
+	gameEntities.push_back(std::make_shared<GameEntity>(cylinder, cobblestoneMaterial));
 	gameEntities[4]->GetTransform()->SetPosition(6, 0, 0);
+}
+
+void Game::CreateLights()
+{
+	lightCount = 5;
+
+	Light directionalLight1 = {};
+	directionalLight1.Type = LIGHT_TYPE_DIRECTIONAL;
+	directionalLight1.Direction = XMFLOAT3(0, -1, 0);
+	directionalLight1.Color = XMFLOAT3(1, 1, 1);
+	directionalLight1.Intensity = 10;
+	lights.push_back(directionalLight1);
+
+	Light directionalLight2 = {};
+	directionalLight2.Type = LIGHT_TYPE_DIRECTIONAL;
+	directionalLight2.Direction = XMFLOAT3(0, 1, 0);
+	directionalLight2.Color = XMFLOAT3(0.1f, 0.1f, 1);
+	directionalLight2.Intensity = 10;
+	lights.push_back(directionalLight2);
+
+	Light directionalLight3 = {};
+	directionalLight3.Type = LIGHT_TYPE_DIRECTIONAL;
+	directionalLight3.Direction = XMFLOAT3(-1, 0, 0);
+	directionalLight3.Color = XMFLOAT3(0.1f, 1, 0.1f);
+	directionalLight3.Intensity = 10;
+	lights.push_back(directionalLight3);
+
+	Light pointLight1 = {};
+	pointLight1.Type = LIGHT_TYPE_POINT;
+	pointLight1.Color = XMFLOAT3(1, 0.2f, 0.2f);
+	pointLight1.Intensity = 1;
+	pointLight1.Position = XMFLOAT3(-10, -3, -2);
+	pointLight1.Range = 100;
+	lights.push_back(pointLight1);
+
+	Light pointLight2 = {};
+	pointLight2.Type = LIGHT_TYPE_POINT;
+	pointLight2.Color = XMFLOAT3(1, 1, 1);
+	pointLight2.Intensity = 1;
+	pointLight2.Position = XMFLOAT3(0, -5, -1);
+	pointLight2.Range = 100;
+	lights.push_back(pointLight2);
 }
 
 // --------------------------------------------------------
@@ -111,61 +174,112 @@ void Game::CreateRootSigAndPipelineState()
 	{
 		// Read our compiled vertex shader code into a blob
 		// - Essentially just "open the file and plop its contents here"
-		D3DReadFileToBlob(FixPath(L"VertexShader.cso").c_str(),
-			vertexShaderByteCode.GetAddressOf());
-		D3DReadFileToBlob(FixPath(L"PixelShader.cso").c_str(),
-			pixelShaderByteCode.GetAddressOf());
+		D3DReadFileToBlob(FixPath(L"VertexShader.cso").c_str(), vertexShaderByteCode.GetAddressOf());
+		D3DReadFileToBlob(FixPath(L"PixelShader.cso").c_str(), pixelShaderByteCode.GetAddressOf());
 	}
 
 	// Input layout
 	const unsigned int inputElementCount = 4;
 	D3D12_INPUT_ELEMENT_DESC inputElements[inputElementCount] = {};
 	{
-		inputElements[0].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
-		inputElements[0].Format = DXGI_FORMAT_R32G32B32_FLOAT; // R32 G32 B32 = float3
-		inputElements[0].SemanticName = "POSITION"; // Name must match semantic in shader
-		inputElements[0].SemanticIndex = 0; // This is the first POSITION semantic
+		// Create an input layout that describes the vertex format
+		// used by the vertex shader we're using
+		//  - This is used by the pipeline to know how to interpret the raw data
+		//     sitting inside a vertex buffer
 
-		inputElements[1].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
-		inputElements[1].Format = DXGI_FORMAT_R32G32_FLOAT; // R32 G32 = float2
-		inputElements[1].SemanticName = "TEXCOORD";
-		inputElements[1].SemanticIndex = 0; // This is the first TEXCOORD semantic
+		// Set up the first element - a position, which is 3 float values
+		inputElements[0].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT; // How far into the vertex is this?  Assume it's after the previous element
+		inputElements[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;		// Most formats are described as color channels, really it just means "Three 32-bit floats"
+		inputElements[0].SemanticName = "POSITION";					// This is "POSITION" - needs to match the semantics in our vertex shader input!
+		inputElements[0].SemanticIndex = 0;							// This is the 0th position (there could be more)
 
-		inputElements[2].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
-		inputElements[2].Format = DXGI_FORMAT_R32G32B32_FLOAT; // R32 G32 B32 = float3
-		inputElements[2].SemanticName = "NORMAL";
-		inputElements[2].SemanticIndex = 0; // This is the first NORMAL semantic
+		// Set up the second element - a UV, which is 2 more float values
+		inputElements[1].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;	// After the previous element
+		inputElements[1].Format = DXGI_FORMAT_R32G32_FLOAT;			// 2x 32-bit floats
+		inputElements[1].SemanticName = "TEXCOORD";					// Match our vertex shader input!
+		inputElements[1].SemanticIndex = 0;							// This is the 0th uv (there could be more)
 
-		inputElements[3].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
-		inputElements[3].Format = DXGI_FORMAT_R32G32B32_FLOAT; // R32 G32 B32 = float3
-		inputElements[3].SemanticName = "TANGENT";
-		inputElements[3].SemanticIndex = 0; // This is the first TANGENT semantic
+		// Set up the third element - a normal, which is 3 more float values
+		inputElements[2].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;	// After the previous element
+		inputElements[2].Format = DXGI_FORMAT_R32G32B32_FLOAT;		// 3x 32-bit floats
+		inputElements[2].SemanticName = "NORMAL";					// Match our vertex shader input!
+		inputElements[2].SemanticIndex = 0;							// This is the 0th normal (there could be more)
+
+		// Set up the fourth element - a tangent, which is 2 more float values
+		inputElements[3].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;	// After the previous element
+		inputElements[3].Format = DXGI_FORMAT_R32G32B32_FLOAT;		// 3x 32-bit floats
+		inputElements[3].SemanticName = "TANGENT";					// Match our vertex shader input!
+		inputElements[3].SemanticIndex = 0;							// This is the 0th tangent (there could be more)
 	}
 
 	// Root Signature
 	{
-		// Define a table of CBV's (constant buffer views)
-		D3D12_DESCRIPTOR_RANGE cbvTable = {};
-		cbvTable.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-		cbvTable.NumDescriptors = 1;
-		cbvTable.BaseShaderRegister = 0;
-		cbvTable.RegisterSpace = 0;
-		cbvTable.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+		// Describe the range of CBVs needed for the vertex shader
+		D3D12_DESCRIPTOR_RANGE cbvRangeVS = {};
+		cbvRangeVS.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+		cbvRangeVS.NumDescriptors = 1;
+		cbvRangeVS.BaseShaderRegister = 0;
+		cbvRangeVS.RegisterSpace = 0;
+		cbvRangeVS.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-		// Define the root parameter
-		D3D12_ROOT_PARAMETER rootParam = {};
-		rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-		rootParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-		rootParam.DescriptorTable.NumDescriptorRanges = 1;
-		rootParam.DescriptorTable.pDescriptorRanges = &cbvTable;
+		// Describe the range of CBVs needed for the pixel shader
+		D3D12_DESCRIPTOR_RANGE cbvRangePS = {};
+		cbvRangePS.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+		cbvRangePS.NumDescriptors = 1;
+		cbvRangePS.BaseShaderRegister = 0;
+		cbvRangePS.RegisterSpace = 0;
+		cbvRangePS.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-		// Describe the overall the root signature
+		// Create a range of SRV's for textures
+		D3D12_DESCRIPTOR_RANGE srvRange = {};
+		srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+		srvRange.NumDescriptors = 4;		// Set to max number of textures at once (match pixel shader!)
+		srvRange.BaseShaderRegister = 0;	// Starts at s0 (match pixel shader!)
+		srvRange.RegisterSpace = 0;
+		srvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+		// Create the root parameters
+		D3D12_ROOT_PARAMETER rootParams[3] = {};
+
+		// CBV table param for vertex shader
+		rootParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		rootParams[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+		rootParams[0].DescriptorTable.NumDescriptorRanges = 1;
+		rootParams[0].DescriptorTable.pDescriptorRanges = &cbvRangeVS;
+
+		// CBV table param for vertex shader
+		rootParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		rootParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+		rootParams[1].DescriptorTable.NumDescriptorRanges = 1;
+		rootParams[1].DescriptorTable.pDescriptorRanges = &cbvRangePS;
+
+		// SRV table param
+		rootParams[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		rootParams[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+		rootParams[2].DescriptorTable.NumDescriptorRanges = 1;
+		rootParams[2].DescriptorTable.pDescriptorRanges = &srvRange;
+
+		// Create a single static sampler (available to all pixel shaders at the same slot)
+		// Note: This is in lieu of having materials have their own samplers for this demo
+		D3D12_STATIC_SAMPLER_DESC anisoWrap = {};
+		anisoWrap.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		anisoWrap.Filter = D3D12_FILTER_ANISOTROPIC;
+		anisoWrap.MaxAnisotropy = 16;
+		anisoWrap.MaxLOD = D3D12_FLOAT32_MAX;
+		anisoWrap.ShaderRegister = 0;  // register(s0)
+		anisoWrap.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+		D3D12_STATIC_SAMPLER_DESC samplers[] = { anisoWrap };
+
+		// Describe and serialize the root signature
 		D3D12_ROOT_SIGNATURE_DESC rootSig = {};
 		rootSig.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-		rootSig.NumParameters = 1;
-		rootSig.pParameters = &rootParam;
-		rootSig.NumStaticSamplers = 0;
-		rootSig.pStaticSamplers = 0;
+		rootSig.NumParameters = ARRAYSIZE(rootParams);
+		rootSig.pParameters = rootParams;
+		rootSig.NumStaticSamplers = ARRAYSIZE(samplers);
+		rootSig.pStaticSamplers = samplers;
 
 		ID3DBlob* serializedRootSig = 0;
 		ID3DBlob* errors = 0;
@@ -199,11 +313,14 @@ void Game::CreateRootSigAndPipelineState()
 		psoDesc.InputLayout.NumElements = inputElementCount;
 		psoDesc.InputLayout.pInputElementDescs = inputElements;
 		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		// Overall primitive topology type (triangle, line, etc.) is set here 
+		// IASetPrimTop() is still used to set list/strip/adj options
+		// See: https://docs.microsoft.com/en-us/windows/desktop/direct3d12/managing-graphics-pipeline-state-in-direct3d-12
 
 		// Root sig
 		psoDesc.pRootSignature = rootSignature.Get();
 
-		// -- Shaders (VS/PS) ---
+		// -- Shaders (VS/PS) --- 
 		psoDesc.VS.pShaderBytecode = vertexShaderByteCode->GetBufferPointer();
 		psoDesc.VS.BytecodeLength = vertexShaderByteCode->GetBufferSize();
 		psoDesc.PS.pShaderBytecode = pixelShaderByteCode->GetBufferPointer();
@@ -220,21 +337,21 @@ void Game::CreateRootSigAndPipelineState()
 		psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
 		psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
 		psoDesc.RasterizerState.DepthClipEnable = true;
+
 		psoDesc.DepthStencilState.DepthEnable = true;
 		psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
 		psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+
 		psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
 		psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
 		psoDesc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-		psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask =
-			D3D12_COLOR_WRITE_ENABLE_ALL;
+		psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 
 		// -- Misc ---
 		psoDesc.SampleMask = 0xffffffff;
 
 		// Create the pipe state object
-		device->CreateGraphicsPipelineState(&psoDesc,
-			IID_PPV_ARGS(pipelineState.GetAddressOf()));
+		device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf()));
 	}
 }
 
@@ -331,17 +448,51 @@ void Game::Draw(float deltaTime, float totalTime)
 		// Draw
 		for (std::shared_ptr<GameEntity> entity : gameEntities)
 		{
-			VertexShaderExternalData vsData = {};
-			vsData.world = entity->GetTransform()->GetWorldMatrix();
-			vsData.view = camera->GetView();
-			vsData.projection = camera->GetProjection();
+			std::shared_ptr<Material> material = entity->GetMaterial();
+			commandList->SetPipelineState(material->GetPipelineState().Get());
 
-			D3D12_GPU_DESCRIPTOR_HANDLE handle = DX12Helper::GetInstance().FillNextConstantBufferAndGetGPUDescriptorHandle(
-				(void*)(&vsData), sizeof(VertexShaderExternalData));
+			// Vertex Shader
+			{
+				VertexShaderExternalData vsData = {};
+				vsData.world = entity->GetTransform()->GetWorldMatrix();
+				vsData.worldInverseTranspose = entity->GetTransform()->GetWorldInverseTransposeMatrix();
+				vsData.view = camera->GetView();
+				vsData.projection = camera->GetProjection();
 
-			commandList->SetGraphicsRootDescriptorTable(0, handle);
+				D3D12_GPU_DESCRIPTOR_HANDLE handle = DX12Helper::GetInstance().FillNextConstantBufferAndGetGPUDescriptorHandle(
+					(void*)(&vsData), sizeof(VertexShaderExternalData));
+
+				commandList->SetGraphicsRootDescriptorTable(0, handle);
+			}
+
+			// Pixel Shader
+			{
+				PixelShaderExternalData psData = {};
+				psData.uvScale = material->GetUVScale();
+				psData.uvOffset = material->GetUVOffset();
+				psData.cameraPosition = camera->GetTransform()->GetPosition();
+				psData.lightCount = lightCount;
+				memcpy(psData.lights, &lights[0], sizeof(Light) * MAX_LIGHTS);
+
+				// Send this to a chunk of the constant buffer heap
+				// and grab the GPU handle for it so we can set it for this draw
+				D3D12_GPU_DESCRIPTOR_HANDLE cbHandlePS =
+					DX12Helper::GetInstance().FillNextConstantBufferAndGetGPUDescriptorHandle(
+						(void*)(&psData), sizeof(PixelShaderExternalData));
+
+				// Set this constant buffer handle
+				// Note: This assumes that descriptor table 1 is the
+				// place to put this particular descriptor. This
+				// is based on how we set up our root signature.
+				commandList->SetGraphicsRootDescriptorTable(1, cbHandlePS);
+			}
+			
+			// Set the SRV descriptor handle for this material's textures
+			// Note: This assumes that descriptor table 2 is for textures (as per our root sig)
+			commandList->SetGraphicsRootDescriptorTable(2, material->GetFinalGPUHandleForSRVs());
 
 			std::shared_ptr<Mesh> mesh = entity->GetMesh();
+
 			D3D12_VERTEX_BUFFER_VIEW  vbView = mesh->GetVertexBuffer();
 			D3D12_INDEX_BUFFER_VIEW  ibView = mesh->GetIndexBuffer();
 
