@@ -3,6 +3,7 @@
 #include <vector>
 #include <fstream>
 #include "DX12Helper.h"
+#include "RaytracingHelper.h"
 
 using namespace DirectX;
 
@@ -206,14 +207,6 @@ Mesh::~Mesh() { }
 
 
 // --------------------------------------------------------
-// Getters for private variables
-// --------------------------------------------------------
-D3D12_VERTEX_BUFFER_VIEW Mesh::GetVertexBuffer() { return vbView; }
-D3D12_INDEX_BUFFER_VIEW Mesh::GetIndexBuffer() { return ibView; }
-unsigned int Mesh::GetIndexCount() { return numIndices; }
-
-
-// --------------------------------------------------------
 // Helper for creating the actual D3D buffers.
 // Also calculates tangents for each vertex before creating buffers.
 // 
@@ -241,8 +234,14 @@ void Mesh::CreateBuffers(Vertex* vertArray, size_t numVerts, unsigned int* index
 	ibView.SizeInBytes = sizeof(unsigned int) * numIndices;
 	ibView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
 
+	this->numVertices = numVertices;
+
 	// Save the indices
 	this->numIndices = (unsigned int)numIndices;
+
+	// Create the raytracing acceleration structure for this mesh
+	raytracingData =
+		RaytracingHelper::GetInstance().CreateBottomLevelAccelerationStructureForMesh(this);
 }
 
 // --------------------------------------------------------
