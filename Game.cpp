@@ -568,6 +568,8 @@ void Game::Draw(float deltaTime, float totalTime)
 		vsyncNecessary ? 1 : 0,
 		vsyncNecessary ? 0 : DXGI_PRESENT_ALLOW_TEARING);
 
+	DX12Helper::GetInstance().WaitForGPU();
+
 	// Figure out which buffer is next
 	currentSwapBuffer++;
 	if (currentSwapBuffer >= numBackBuffers)

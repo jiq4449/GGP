@@ -33,6 +33,7 @@ Mesh::Mesh(const std::wstring& objFile)
 {
 	ibView = {};
 	vbView = {};
+	numVertices = 0;
 	numIndices = 0;
 
 	// File input object
@@ -234,7 +235,7 @@ void Mesh::CreateBuffers(Vertex* vertArray, size_t numVerts, unsigned int* index
 	ibView.SizeInBytes = sizeof(unsigned int) * numIndices;
 	ibView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
 
-	this->numVertices = numVertices;
+	this->numVertices = numVerts;
 
 	// Save the indices
 	this->numIndices = (unsigned int)numIndices;
