@@ -13,6 +13,9 @@
 // For the DirectX Math library
 using namespace DirectX;
 
+// Helper macro for getting a float between min and max
+#define RandomRange(min, max) (float)rand() / RAND_MAX * (max - min) + min
+
 // --------------------------------------------------------
 // Constructor
 //
@@ -97,14 +100,39 @@ void Game::CreateGeometry()
 	D3D12_CPU_DESCRIPTOR_HANDLE cobblestoneRoughness = LoadTexture(L"../../Assets/Textures/cobblestone_roughness.png");
 	D3D12_CPU_DESCRIPTOR_HANDLE cobblestoneMetal = LoadTexture(L"../../Assets/Textures/cobblestone_metal.png");
 
-	std::shared_ptr<Material> cobblestoneMaterial = std::make_shared<Material>(pipelineState, XMFLOAT3(1, 1, 1), 
-		XMFLOAT2(0, 0), XMFLOAT2(1, 1), 0.7f);
+	D3D12_CPU_DESCRIPTOR_HANDLE bronzeAlbedo = LoadTexture(L"../../Assets/Textures/bronze_albedo.png");
+	D3D12_CPU_DESCRIPTOR_HANDLE bronzeNormals = LoadTexture(L"../../Assets/Textures/bronze_normals.png");
+	D3D12_CPU_DESCRIPTOR_HANDLE bronzeRoughness = LoadTexture(L"../../Assets/Textures/bronze_roughness.png");
+	D3D12_CPU_DESCRIPTOR_HANDLE bronzeMetal = LoadTexture(L"../../Assets/Textures/bronze_metal.png");
 
-	cobblestoneMaterial->AddTexture(cobblestoneAlbedo, 0);
-	cobblestoneMaterial->AddTexture(cobblestoneNormals, 1);
-	cobblestoneMaterial->AddTexture(cobblestoneRoughness, 2);
-	cobblestoneMaterial->AddTexture(cobblestoneMetal, 3);
-	cobblestoneMaterial->FinalizeTextures();
+	D3D12_CPU_DESCRIPTOR_HANDLE scratchedAlbedo = LoadTexture(L"../../Assets/Textures/scratched_albedo.png");
+	D3D12_CPU_DESCRIPTOR_HANDLE scratchedNormals = LoadTexture(L"../../Assets/Textures/scratched_normals.png");
+	D3D12_CPU_DESCRIPTOR_HANDLE scratchedRoughness = LoadTexture(L"../../Assets/Textures/scratched_roughness.png");
+	D3D12_CPU_DESCRIPTOR_HANDLE scratchedMetal = LoadTexture(L"../../Assets/Textures/scratched_metal.png");
+
+	// Create materials
+	// Note: Samplers are handled by a single static sampler in the
+	// root signature for this demo, rather than per-material
+	std::shared_ptr<Material> cobbleMat = std::make_shared<Material>(pipelineState, XMFLOAT3(0.5f, 0.5f, 0.5f));
+	cobbleMat->AddTexture(cobblestoneAlbedo, 0);
+	cobbleMat->AddTexture(cobblestoneNormals, 1);
+	cobbleMat->AddTexture(cobblestoneRoughness, 2);
+	cobbleMat->AddTexture(cobblestoneMetal, 3);
+	cobbleMat->FinalizeTextures();
+
+	std::shared_ptr<Material> bronzeMat = std::make_shared<Material>(pipelineState, XMFLOAT3(1, 1, 1));
+	bronzeMat->AddTexture(bronzeAlbedo, 0);
+	bronzeMat->AddTexture(bronzeNormals, 1);
+	bronzeMat->AddTexture(bronzeRoughness, 2);
+	bronzeMat->AddTexture(bronzeMetal, 3);
+	bronzeMat->FinalizeTextures();
+
+	std::shared_ptr<Material> scratchedMat = std::make_shared<Material>(pipelineState, XMFLOAT3(0.9f, 0.9f, 1));
+	scratchedMat->AddTexture(scratchedAlbedo, 0);
+	scratchedMat->AddTexture(scratchedNormals, 1);
+	scratchedMat->AddTexture(scratchedRoughness, 2);
+	scratchedMat->AddTexture(scratchedMetal, 3);
+	scratchedMat->FinalizeTextures();
 
 	// Load meshes
 	std::shared_ptr<Mesh> cube = std::make_shared<Mesh>(FixPath(L"../../Assets/Models/cube.obj").c_str());
@@ -113,21 +141,36 @@ void Game::CreateGeometry()
 	std::shared_ptr<Mesh> torus = std::make_shared<Mesh>(FixPath(L"../../Assets/Models/torus.obj").c_str());
 	std::shared_ptr<Mesh> cylinder = std::make_shared<Mesh>(FixPath(L"../../Assets/Models/cylinder.obj").c_str());
 
-	// Create entities
-	gameEntities.push_back(std::make_shared<GameEntity>(cube, cobblestoneMaterial));
-	gameEntities[0]->GetTransform()->SetPosition(-6, 0, 0);
+	// Floor
+	std::shared_ptr<GameEntity> floor = std::make_shared<GameEntity>(cube, cobbleMat);
+	floor->GetTransform()->SetScale(100);
+	floor->GetTransform()->SetPosition(0, -52, 0);
+	gameEntities.push_back(floor);
 
-	gameEntities.push_back(std::make_shared<GameEntity>(sphere, cobblestoneMaterial));
-	gameEntities[1]->GetTransform()->SetPosition(-3, 0, 0);
+	// Spinning torus
+	std::shared_ptr<GameEntity> t = std::make_shared<GameEntity>(torus, scratchedMat);
+	t->GetTransform()->SetScale(2);
+	t->GetTransform()->SetPosition(0, 1, 0);
+	gameEntities.push_back(t);
 
-	gameEntities.push_back(std::make_shared<GameEntity>(helix, cobblestoneMaterial));
-	gameEntities[2]->GetTransform()->SetPosition(0, 0, 0);
+	for (int i = 0; i < 20; i++)
+	{
+		std::shared_ptr<Material> mat = std::make_shared<Material>(pipelineState, XMFLOAT3(
+			RandomRange(0.0f, 1.0f),
+			RandomRange(0.0f, 1.0f),
+			RandomRange(0.0f, 1.0f)));
 
-	gameEntities.push_back(std::make_shared<GameEntity>(torus, cobblestoneMaterial));
-	gameEntities[3]->GetTransform()->SetPosition(3, 0, 0);
+		float scale = RandomRange(0.5f, 1.5f);
 
-	gameEntities.push_back(std::make_shared<GameEntity>(cylinder, cobblestoneMaterial));
-	gameEntities[4]->GetTransform()->SetPosition(6, 0, 0);
+		std::shared_ptr<GameEntity> sphereEnt = std::make_shared<GameEntity>(sphere, mat);
+		sphereEnt->GetTransform()->SetScale(scale);
+		sphereEnt->GetTransform()->SetPosition(
+			RandomRange(-6, 6),
+			-2 + scale / 2.0f,
+			RandomRange(-6, 6));
+
+		gameEntities.push_back(sphereEnt);
+	}
 
 	// Meshes create their own BLAS's; we just need to create the TLAS for the scene here
 	RaytracingHelper::GetInstance().CreateTopLevelAccelerationStructureForScene(gameEntities);
@@ -397,10 +440,27 @@ void Game::Update(float deltaTime, float totalTime)
 	if (Input::GetInstance().KeyDown(VK_ESCAPE))
 		Quit();
 
-	for (std::shared_ptr<GameEntity> entity : gameEntities)
+	gameEntities[1]->GetTransform()->Rotate(deltaTime * 0.5f, deltaTime * 0.5f, deltaTime * 0.5f);
+
+	// Rotate entities (skip first two)
+	for (int i = 2; i < gameEntities.size(); i++)
 	{
-		entity->GetTransform()->Rotate(XMFLOAT3(0, deltaTime, 0));
+		//e->GetTransform()->Rotate(0, deltaTime * 0.5f, 0);
+
+		XMFLOAT3 pos = gameEntities[i]->GetTransform()->GetPosition();
+		switch (i % 2)
+		{
+		case 0:
+			pos.x = sin((totalTime + i) * 0.4f) * 4;
+			break;
+
+		case 1:
+			pos.z = sin((totalTime + i) * 0.4f) * 4;
+			break;
+		}
+		gameEntities[i]->GetTransform()->SetPosition(pos);
 	}
+
 
 	camera->Update(deltaTime);
 }

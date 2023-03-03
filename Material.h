@@ -10,9 +10,8 @@ public:
 	Material(
 		Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState,
 		DirectX::XMFLOAT3 colorTint,
-		DirectX::XMFLOAT2 uvOffset,
-		DirectX::XMFLOAT2 uvScale,
-		float roughness
+		DirectX::XMFLOAT2 uvOffset = DirectX::XMFLOAT2(0, 0),
+		DirectX::XMFLOAT2 uvScale = DirectX::XMFLOAT2(1, 1)
 	);
 
 	// Getter Functions

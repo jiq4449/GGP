@@ -1,7 +1,7 @@
 #include "Material.h"
 #include "DX12Helper.h"
 
-Material::Material(Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState, DirectX::XMFLOAT3 colorTint, DirectX::XMFLOAT2 uvOffset, DirectX::XMFLOAT2 uvScale, float roughness)
+Material::Material(Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState, DirectX::XMFLOAT3 colorTint, DirectX::XMFLOAT2 uvOffset, DirectX::XMFLOAT2 uvScale)
 {
 	this->pipelineState = pipelineState;
 	this->colorTint = colorTint;

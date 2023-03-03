@@ -1,11 +1,5 @@
 #include "Lighting.hlsli"
 
-SamplerState BasicSampler : register(s0);
-Texture2D AlbedoTexture : register(t0);
-Texture2D NormalMap : register(t1);
-Texture2D RoughnessMap : register(t2);
-Texture2D MetalMap : register(t3);
-
 cbuffer ExternalData : register(b0)
 {
     float2 uvScale;
@@ -33,6 +27,12 @@ struct VertexToPixel
     float3 tangent			: TANGENT;
     float3 worldPos			: POSITION;
 };
+
+Texture2D AlbedoTexture : register(t0);
+Texture2D NormalMap : register(t1);
+Texture2D RoughnessMap : register(t2);
+Texture2D MetalMap : register(t3);
+SamplerState BasicSampler : register(s0);
 
 // --------------------------------------------------------
 // The entry point (main method) for our pixel shader
@@ -85,5 +85,5 @@ float4 main(VertexToPixel input) : SV_TARGET
         }
     }
 
-    return float4(resultingLight, 1);
+    return float4(pow(resultingLight, 1.0f / 2.2f), 1.0f);
 }
