@@ -10,6 +10,7 @@ public:
 	Material(
 		Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState,
 		DirectX::XMFLOAT3 colorTint,
+		bool isTransparent = false,
 		DirectX::XMFLOAT2 uvOffset = DirectX::XMFLOAT2(0, 0),
 		DirectX::XMFLOAT2 uvScale = DirectX::XMFLOAT2(1, 1)
 	);
@@ -19,6 +20,7 @@ public:
 	DirectX::XMFLOAT3 GetColorTint();
 	DirectX::XMFLOAT2 GetUVOffset();
 	DirectX::XMFLOAT2 GetUVScale();
+	bool IsTransparent();
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetPipelineState();
 	D3D12_GPU_DESCRIPTOR_HANDLE GetFinalGPUHandleForSRVs();
 
@@ -36,6 +38,8 @@ private:
 	DirectX::XMFLOAT3 colorTint;
 	DirectX::XMFLOAT2 uvOffset;
 	DirectX::XMFLOAT2 uvScale;
+
+	bool transparent;
 
 	bool finalized;
 

@@ -127,7 +127,7 @@ void Game::CreateGeometry()
 	bronzeMat->AddTexture(bronzeMetal, 3);
 	bronzeMat->FinalizeTextures();
 
-	std::shared_ptr<Material> scratchedMat = std::make_shared<Material>(pipelineState, XMFLOAT3(0.9f, 0.9f, 1));
+	std::shared_ptr<Material> scratchedMat = std::make_shared<Material>(pipelineState, XMFLOAT3(0.9f, 0.9f, 1), true);
 	scratchedMat->AddTexture(scratchedAlbedo, 0);
 	scratchedMat->AddTexture(scratchedNormals, 1);
 	scratchedMat->AddTexture(scratchedRoughness, 2);

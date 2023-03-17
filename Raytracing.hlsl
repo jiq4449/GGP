@@ -21,6 +21,8 @@ static const uint VertexSizeInBytes = 11 * 4; // 11 floats total per vertex * 4 
 struct RayPayload
 {
 	float3 color;
+    uint recursionDepth;
+    uint rayPerPixelIndex;
 };
 
 // Note: We'll be using the built-in BuiltInTriangleIntersectionAttributes struct
@@ -43,6 +45,7 @@ cbuffer SceneData : register(b0)
 cbuffer ObjectData : register(b1)
 {
 	float4 entityColor[MAX_INSTANCES_PER_BLAS];
+    bool isTransparent;
 };
 
 
@@ -127,6 +130,49 @@ void CalcRayFromCamera(float2 rayIndices, out float3 origin, out float3 directio
 	direction = normalize(worldPos.xyz - origin);
 }
 
+float3 RandomVector(float u0, float u1)
+{
+    float a = u0 * 2 - 1;
+    float b = sqrt(1 - a * a);
+    float phi = 2.0f * PI * u1;
+    float x = b * cos(phi);
+    float y = b * sin(phi);
+    float z = a;
+    return float3(x, y, z);
+}
+
+float3 RandomCosineWeightedHemisphere(float u0, float u1, float3 unitNormal)
+{
+    float a = u0 * 2 - 1;
+    float b = sqrt(1 - a * a);
+    float phi = 2.0f * PI * u1;
+    float x = unitNormal.x + b * cos(phi);
+    float y = unitNormal.y + b * sin(phi);
+    float z = unitNormal.z + a;
+    return float3(x, y, z);
+}
+
+// https://thebookofshaders.com/10/
+float rand(float2 uv)
+{
+    return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453);
+}
+
+float2 rand2(float2 uv)
+{
+    float x = rand(uv);
+    float y = sqrt(1 - x * x);
+    return float2(x, y);
+}
+
+float3 rand3(float2 uv)
+{
+    return float3(
+	rand2(uv),
+	rand(uv.yx));
+}
+
+
 
 // === Shaders ===
 
@@ -137,36 +183,51 @@ void RayGen()
 {
 	// Get the ray indices
 	uint2 rayIndices = DispatchRaysIndex().xy;
+	
+    float3 totalColor = float3(0, 0, 0);
 
-	// Calculate the ray data
-	float3 rayOrigin;
-	float3 rayDirection;
-	CalcRayFromCamera(rayIndices, rayOrigin, rayDirection);
+    int raysPerPixel = 10;
+	
+    for (int r = 0; r < raysPerPixel; r++)
+    {
+        float2 adjustedIndices = (float2) rayIndices;
+        adjustedIndices += rand((float) r / raysPerPixel);
+		
+		// Calculate the ray data
+        float3 rayOrigin;
+        float3 rayDirection;
+        CalcRayFromCamera(rayIndices, rayOrigin, rayDirection);
 
-	// Set up final ray description
-	RayDesc ray;
-	ray.Origin = rayOrigin;
-	ray.Direction = rayDirection;
-	ray.TMin = 0.0001f;
-	ray.TMax = 1000.0f;
+		// Set up final ray description
+		RayDesc ray;
+		ray.Origin = rayOrigin;
+		ray.Direction = rayDirection;
+		ray.TMin = 0.0001f;
+		ray.TMax = 1000.0f;
 
-	// Set up the payload for the ray
-	// This initializes the struct to all zeros
-	RayPayload payload = (RayPayload)0;
+		// Set up the payload for the ray
+		// This initializes the struct to all zeros
+        RayPayload payload;
+        payload.color = float3(1, 1, 1);
+        payload.recursionDepth = 0;
+        payload.rayPerPixelIndex = r;
 
-	// Perform the ray trace for this ray
-	TraceRay(
-		SceneTLAS,
-		RAY_FLAG_NONE,
-		0xFF,
-		0,
-		0,
-		0,
-		ray,
-		payload);
+		// Perform the ray trace for this ray
+		TraceRay(
+			SceneTLAS,
+			RAY_FLAG_NONE,
+			0xFF,
+			0,
+			0,
+			0,
+			ray,
+			payload);
+		
+        totalColor += payload.color;
+    }
 
 	// Set the final color of the buffer (gamma corrected)
-	OutputColor[rayIndices] = float4(pow(payload.color, 1.0f / 2.2f), 1);
+    OutputColor[rayIndices] = float4(pow(totalColor / raysPerPixel, 1.0f / 2.2f), 1);
 }
 
 
@@ -180,27 +241,115 @@ void Miss(inout RayPayload payload)
 
 	// Interpolate based on the direction of the ray
 	float interpolation = dot(normalize(WorldRayDirection()), float3(0, 1, 0)) * 0.5f + 0.5f;
-	payload.color = lerp(downColor, upColor, interpolation);
+	float3 color = lerp(downColor, upColor, interpolation);
+	
+    payload.color *= color;
 }
 
+
+// Fresnel approximation
+float FresnelSchlick(float NdotV, float indexOfRefraction)
+{
+    float r0 = pow((1.0f - indexOfRefraction) / (1.0f + indexOfRefraction), 2.0f);
+    return r0 + (1.0f - r0) * pow(1 - NdotV, 5.0f);
+}
+
+// Refraction function that returns a bool depending on result
+bool TryRefract(float3 incident, float3 normal, float ior, out float3 refr)
+{
+    float NdotI = dot(normal, incident);
+    float k = 1.0f - ior * ior * (1.0f - NdotI * NdotI);
+
+    if (k < 0.0f)
+    {
+        refr = float3(0, 0, 0);
+        return false;
+    }
+
+    refr = ior * incident - (ior * NdotI + sqrt(k)) * normal;
+    return true;
+}
 
 // Closest hit shader - Runs when a ray hits the closest surface
 [shader("closesthit")]
 void ClosestHit(inout RayPayload payload, BuiltInTriangleIntersectionAttributes hitAttributes)
 {
+    if (payload.recursionDepth == 10)
+    {
+        payload.color = float3(0, 0, 0);
+        return;
+    }
+	
+	// We've hit, so adjust the payload color by this instance's color
+    payload.color *= entityColor[InstanceID()].rgb;
+	
 	// Grab the index of the triangle we hit
-	uint triangleIndex = PrimitiveIndex();
+    uint triangleIndex = PrimitiveIndex();
 
 	// Calculate the barycentric data for vertex interpolation
-	float3 barycentricData = float3(
+    float3 barycentricData = float3(
 		1.0f - hitAttributes.barycentrics.x - hitAttributes.barycentrics.y,
 		hitAttributes.barycentrics.x,
 		hitAttributes.barycentrics.y);
 
 	// Get the interpolated vertex data
-	Vertex interpolatedVert = InterpolateVertices(triangleIndex, barycentricData);
+    Vertex interpolatedVert = InterpolateVertices(triangleIndex, barycentricData);
 
-	// Get the data for this entity
-	uint instanceID = InstanceID();
-	payload.color = entityColor[instanceID].rgb;
+    float3 normal_WS = normalize(mul(interpolatedVert.normal, (float3x3) ObjectToWorld4x3()));
+	
+	// Calc a unique RNG value for this ray, based on the "uv" of this pixel and other per-ray data
+    float2 uv = (float2) DispatchRaysIndex() / (float2) DispatchRaysDimensions();
+    float2 rng = rand2(uv * (payload.recursionDepth + 1) + payload.rayPerPixelIndex + RayTCurrent());
+	
+	// Initialize dir
+    float3 dir;
+	
+	if (!isTransparent)
+    {
+		// Interpolate between perfect reflection and random bounce based on roughness
+        float3 refl = reflect(WorldRayDirection(), normal_WS);
+        float3 randomBounce = RandomCosineWeightedHemisphere(rand(rng), rand(rng.yx), normal_WS);
+        dir = normalize(lerp(refl, randomBounce, entityColor[InstanceID()].a));
+    }
+	else
+    {
+		// Get the index of refraction based on the side of the hit
+        float ior = 1.5f;
+        if (HitKind() == HIT_KIND_TRIANGLE_FRONT_FACE)
+        {
+			// Invert the index of refraction for front faces
+            ior = 1.0f / ior;
+        }
+        else
+        {
+			// Invert the normal for back faces
+            normal_WS *= -1;
+        }
+
+		// Random chance for reflection instead of refraction based on Fresnel
+        float NdotV = dot(-WorldRayDirection(), normal_WS);
+        bool reflectFresnel = FresnelSchlick(NdotV, ior) > rand(rng);
+
+		// Test for refraction
+        if (reflectFresnel || !TryRefract(WorldRayDirection(), normal_WS, ior, dir))
+            dir = reflect(WorldRayDirection(), normal_WS);
+
+		// Interpolate between refract/reflect and random bounce based on roughness squared
+        float3 randomBounce = RandomCosineWeightedHemisphere(rand(rng), rand(rng.yx), normal_WS);
+        dir = normalize(lerp(dir, randomBounce, saturate(pow(entityColor[InstanceID()].a, 2))));
+    }
+	
+    RayDesc ray;
+    ray.Origin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    ray.Direction = dir;
+    ray.TMin = 0.0001f;
+    ray.TMax = 1000.0f;
+	
+    payload.recursionDepth++;
+    TraceRay(
+		SceneTLAS,
+		RAY_FLAG_NONE,
+		0xFF, 0, 0, 0, // Mask and offsets
+		ray,
+		payload);
 }

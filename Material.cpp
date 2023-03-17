@@ -1,10 +1,11 @@
 #include "Material.h"
 #include "DX12Helper.h"
 
-Material::Material(Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState, DirectX::XMFLOAT3 colorTint, DirectX::XMFLOAT2 uvOffset, DirectX::XMFLOAT2 uvScale)
+Material::Material(Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState, DirectX::XMFLOAT3 colorTint, bool isTransparent, DirectX::XMFLOAT2 uvOffset, DirectX::XMFLOAT2 uvScale)
 {
 	this->pipelineState = pipelineState;
 	this->colorTint = colorTint;
+	transparent = isTransparent;
 	this->uvOffset = uvOffset;
 	this->uvScale = uvScale;
 
@@ -22,6 +23,8 @@ DirectX::XMFLOAT3 Material::GetColorTint() { return colorTint; }
 DirectX::XMFLOAT2 Material::GetUVOffset() { return uvOffset; }
 
 DirectX::XMFLOAT2 Material::GetUVScale() { return uvScale; }
+
+bool Material::IsTransparent() { return transparent; }
 
 Microsoft::WRL::ComPtr<ID3D12PipelineState> Material::GetPipelineState() { return pipelineState; }
 
